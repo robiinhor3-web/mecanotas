@@ -657,6 +657,12 @@ detectAdmin().then(render);
 
 // No PC (localhost) não usa cache offline, para o editor sempre mostrar o conteúdo atual
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('sw.js');
+  // quando chega uma versão nova do app, recarrega uma vez para já mostrar a atualização
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloaded) { reloaded = true; location.reload(); }
+  });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
 }
 navigator.storage?.persist?.();
