@@ -1,60 +1,50 @@
 # MecaNotas: app de mecânica industrial
 
-App para Android e iPhone com tabelas, calculadoras e anotações de serviço.
-Funciona sem internet e é todo editável pelo celular.
+App para Android e iPhone com tabelas, calculadoras e anotações de serviço. Funciona sem internet.
+
+- **App:** https://robiinhor3-web.github.io/mecanotas/
+- **Política de Privacidade:** https://robiinhor3-web.github.io/mecanotas/privacidade.html
+
+## Como funciona
+
+| Quem | O que pode fazer |
+|---|---|
+| **Usuários (celular)** | Consultar tabelas e calculadoras, buscar, criar **as próprias anotações de serviço** (ficam só no aparelho de cada um) |
+| **Administrador (seu PC)** | Editar tudo: seções, tabelas, textos, calculadoras. Depois clicar em **Publicar** para todos receberem |
+
+## Editar o app (somente no seu PC)
+
+1. Dê dois cliques no atalho **"Editar MecaNotas"** da Área de Trabalho (ou no `EDITAR-APP.bat` desta pasta).
+2. Vai abrir uma **janela preta** (deixe aberta) e o navegador com o app. No topo aparece a barra roxa **🔒 Editor do administrador**.
+3. Toque no **✏️** para entrar no modo edição:
+   - toque numa **linha** da tabela para alterar ou excluir;
+   - **＋ Adicionar linha**, **＋ Tabela**, **＋ Texto**, **＋ Calculadora**;
+   - na tela inicial, **＋ Nova seção** (uma aba nova, ex.: Acoplamentos);
+   - ⬆ ⬇ mudam a ordem e 🗑 exclui;
+   - nos textos, `**palavra**` fica em **negrito**.
+4. Cada alteração é salva no PC na hora. Quando terminar, clique em **🚀 Publicar**.
+5. Em 1 a 2 minutos o site é atualizado. Os celulares recebem a novidade quando abrirem o app (às vezes é preciso abrir duas vezes).
+6. Feche a janela preta para encerrar o editor.
+
+Por que ninguém mais consegue editar: o editor só funciona no seu computador,
+e só a sua conta do GitHub (`robiinhor3-web`) tem permissão para publicar.
+
+## Instalar no celular
+
+- **Android (Chrome):** abra o link, toque em ⋮ e depois em **Instalar app**.
+- **iPhone (Safari):** abra o link, toque em **Compartilhar** e depois em **Adicionar à Tela de Início**.
+
+## Backup das anotações (usuários)
+
+As anotações de serviço ficam só no aparelho. Em ⚙️ → **Exportar backup** gera um arquivo para guardar
+ou para passar as anotações para outro celular (**Importar backup**).
 
 ## Arquivos
 
 | Arquivo | Para que serve |
 |---|---|
-| `index.html` | Página principal |
-| `app.js` | Funcionamento do app (telas, edição, calculadoras) |
-| `data.js` | **Conteúdo inicial**: tabelas e textos que vêm de fábrica |
-| `style.css` | Cores e visual |
-| `manifest.json`, `sw.js`, `icons/` | Deixam o app instalável e funcionando offline |
-
-## 1. Publicar na internet (grátis, uma vez só)
-
-1. Crie uma conta em https://github.com
-2. Clique em **New repository**, nome `mecanotas`, marque **Public** e depois **Create**.
-3. Clique em **uploading an existing file** e arraste todos os arquivos desta pasta (incluindo a pasta `icons`). Clique em **Commit changes**.
-4. Vá em **Settings → Pages**. Em *Branch*, escolha `main` e `/ (root)`, depois **Save**.
-5. Em 1 ou 2 minutos o app estará em: `https://SEU-USUARIO.github.io/mecanotas/`
-
-## 2. Instalar no celular
-
-- **Android (Chrome):** abra o link, toque em ⋮ e depois em **Instalar app** (ou "Adicionar à tela inicial").
-- **iPhone (Safari):** abra o link, toque em **Compartilhar** (quadrado com seta) e depois em **Adicionar à Tela de Início**.
-
-Depois de aberto uma vez, funciona **sem internet**.
-
-## 3. Editar o conteúdo pelo celular (dentro do app)
-
-- Toque no **✏️** no topo para entrar no modo edição.
-- Toque em uma **linha da tabela** para alterar ou excluir.
-- **＋ Adicionar linha**, **＋ Tabela**, **＋ Texto**, **＋ Calculadora** e **Nova seção** (na tela inicial).
-- ⬆ ⬇ mudam a ordem dos blocos e 🗑 exclui.
-- Nos textos, `**palavra**` fica em **negrito**.
-
-⚠️ **Os dados ficam salvos só no aparelho.** Use ⚙️ → **Exportar backup** com frequência
-e guarde o arquivo no Drive ou no WhatsApp. O mesmo arquivo serve para passar tudo para outro celular (**Importar backup**).
-
-## 4. Editar o código pelo celular (opcional)
-
-No app do GitHub ou no navegador, abra o repositório, toque no arquivo (ex.: `style.css`)
-e depois no lápis ✏️ para editar e em **Commit changes**. O site se atualiza sozinho em cerca de 1 minuto
-e o app pega a nova versão na próxima vez que for aberto.
-
-> Alterar o `data.js` muda o conteúdo **inicial**. Quem já usa o app continua com os próprios dados.
-> Para receber as tabelas novas, use ⚙️ → "Restaurar seções padrão excluídas" ou "Voltar tabelas ao padrão".
-
-## 5. Testar no computador
-
-Na pasta do projeto: `python -m http.server 8000` e abra http://localhost:8000
-
-## Próximos passos possíveis
-
-- Fotos nas anotações de serviço
-- Exportar anotações em PDF ou planilha
-- Publicar na Play Store / App Store (usando Capacitor, com o mesmo código)
-- Sincronizar entre aparelhos (nuvem)
+| `data.js` | **Conteúdo** do app (gerado pelo editor) |
+| `app.js`, `index.html`, `style.css` | Funcionamento e visual |
+| `admin-server.js`, `EDITAR-APP.bat` | Editor do administrador (só roda no PC) |
+| `manifest.json`, `sw.js`, `icons/` | Instalação e funcionamento offline |
+| `privacidade.html` | Política de Privacidade (exigida pelas lojas) |

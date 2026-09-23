@@ -1,7 +1,7 @@
 // Guarda o app no aparelho para funcionar sem internet.
 // Mostra a versão salva na hora e baixa a atualização em segundo plano
 // (as mudanças publicadas aparecem na próxima vez que abrir o app).
-const CACHE = 'mecanotas-v1';
+const CACHE = 'mecanotas-v2';
 const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'data.js', 'manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 

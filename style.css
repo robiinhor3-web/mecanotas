@@ -127,3 +127,12 @@ button, .btn {
 .spacer { flex: 1; }
 .row-view dt { color: var(--muted); font-size: 13px; }
 .row-view dd { margin: 0 0 10px; font-size: 17px; }
+
+#admin-bar {
+  position: sticky; top: calc(var(--top) + 57px); z-index: 9;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: center;
+  padding: 6px 12px; background: #2b1f3a; border-bottom: 1px solid #6e40c9; font-size: 14px;
+}
+#admin-bar button { padding: 6px 12px; }
+#admin-bar .pend { color: var(--accent); }
+#admin-bar .okpub { color: var(--ok); }

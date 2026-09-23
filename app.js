@@ -1,6 +1,7 @@
 'use strict';
 
-const STORAGE_KEY = 'mecanotas-v1';
+const STORAGE_KEY = 'mecanotas-notas-v1';
+const OLD_STORAGE_KEY = 'mecanotas-v1';
 const $ = (s, el = document) => el.querySelector(s);
 const clone = o => JSON.parse(JSON.stringify(o));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -13,7 +14,11 @@ const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000
 const fmtDate = s => (s ? s.split('-').reverse().join('/') : '—');
 const slug = s => norm(s).replace(/[^a-z0-9]+/g, '-');
 
-let DB = load();
+// Conteúdo (seções/tabelas) vem sempre do data.js publicado: é somente leitura no celular.
+// Cada aparelho guarda apenas as próprias anotações de serviço.
+// O modo edição só existe no PC do administrador (EDITAR-APP.bat → admin-server.js).
+let ADMIN = false;
+let DB = withIds({ sections: clone(DEFAULT_DATA.sections), notes: loadNotes() });
 let editMode = false;
 let pageEditable = false;
 let lastRoute = null;
@@ -27,17 +32,54 @@ function withIds(data) {
   return data;
 }
 
-function load() {
+function loadNotes() {
   try {
     const s = localStorage.getItem(STORAGE_KEY);
-    if (s) return withIds(JSON.parse(s));
+    if (s) return JSON.parse(s);
+    // a primeira versão guardava tudo (tabelas + anotações) numa chave só
+    const old = localStorage.getItem(OLD_STORAGE_KEY);
+    if (old) return JSON.parse(old).notes || [];
   } catch (e) { console.error(e); }
-  return withIds(clone(DEFAULT_DATA));
+  return [];
 }
 
 function save() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DB.notes)); }
   catch (e) { alert('Não foi possível salvar (armazenamento cheio?). Faça um backup em ⚙️.'); }
+  if (ADMIN) saveContent();
+}
+
+// ---------- Administrador (somente no PC) ----------
+
+let saving = Promise.resolve();
+
+function saveContent() {
+  const body = JSON.stringify({ version: DEFAULT_DATA.version || 1, sections: DB.sections });
+  saving = saving
+    .then(() => fetch('/api/salvar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }))
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return refreshAdminBar(); })
+    .catch(e => alert(`Erro ao salvar no PC (${e.message}). A janela preta do editor está aberta?`));
+}
+
+async function detectAdmin() {
+  if (!['localhost', '127.0.0.1'].includes(location.hostname)) return;
+  try {
+    const r = await fetch('/api/status');
+    if (!r.ok) return;
+    ADMIN = true;
+    $('.topbar').insertAdjacentHTML('afterend', '<div id="admin-bar"></div>');
+    await refreshAdminBar();
+  } catch { /* servidor comum, sem editor */ }
+}
+
+async function refreshAdminBar() {
+  const st = await fetch('/api/status').then(r => r.json()).catch(() => null);
+  const bar = $('#admin-bar');
+  if (!bar) return;
+  if (!st) { bar.innerHTML = '🔒 Editor · ⚠️ sem conexão com o editor (janela preta fechada?)'; return; }
+  bar.innerHTML = `<span>🔒 Editor do administrador</span>
+    ${st.pendentes ? `<span class="pend">● alterações não publicadas</span>
+      <button class="primary" data-action="publish">🚀 Publicar</button>` : '<span class="okpub">✔ tudo publicado</span>'}`;
 }
 
 // ---------- Calculadoras ----------
@@ -179,9 +221,9 @@ function setHeader(title, { back = null, editable = false } = {}) {
   $('#title').textContent = title;
   $('#btn-back').hidden = !back;
   $('#btn-back').onclick = () => { location.hash = back; };
-  $('#btn-edit').hidden = !editable;
+  pageEditable = editable && ADMIN;
+  $('#btn-edit').hidden = !pageEditable;
   $('#btn-edit').classList.toggle('on', editMode);
-  pageEditable = editable;
 }
 
 function view(html) {
@@ -359,21 +401,13 @@ function noteModal(n) {
 
 function renderSettings() {
   setHeader('Backup e configurações', { back: '#/' });
-  const kb = new Blob([JSON.stringify(DB)]).size / 1024;
   view(`
-    <section class="block"><h3>💾 Backup</h3>
-      <p>Seus dados ficam salvos <b>somente neste aparelho</b>. Exporte um backup de vez em quando e guarde no Google Drive, e-mail ou WhatsApp.
-      O mesmo arquivo serve para passar tudo para outro celular.</p>
+    <section class="block"><h3>💾 Backup das anotações</h3>
+      <p>Suas ${DB.notes.length} anotações de serviço ficam salvas <b>somente neste aparelho</b>. Exporte um backup de vez em quando
+      e guarde no Google Drive, e-mail ou WhatsApp. O mesmo arquivo serve para passar as anotações para outro celular.</p>
       <div class="toolbar">
         <button class="primary" data-action="export">⬇ Exportar backup</button>
         <label class="btn">⬆ Importar backup<input type="file" accept=".json,application/json" id="import-file" hidden></label>
-      </div>
-    </section>
-    <section class="block"><h3>📦 Dados</h3>
-      <p>${fmt(kb, 0)} KB usados · ${DB.sections.length} seções · ${DB.notes.length} anotações</p>
-      <div class="toolbar">
-        <button data-action="restore-missing">Restaurar seções padrão excluídas</button>
-        <button class="danger" data-action="reset">Voltar tabelas ao padrão (mantém anotações)</button>
       </div>
     </section>
     <section class="block"><h3>ℹ️ Sobre</h3>
@@ -390,9 +424,9 @@ function importFile(e) {
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      if (!Array.isArray(data.sections)) throw new Error('formato');
-      if (!confirm(`Importar backup com ${data.sections.length} seções e ${(data.notes || []).length} anotações? Os dados atuais serão substituídos.`)) return;
-      DB = withIds(data);
+      if (!Array.isArray(data.notes)) throw new Error('formato');
+      if (!confirm(`Importar backup com ${data.notes.length} anotações? As anotações atuais deste aparelho serão substituídas.`)) return;
+      DB.notes = data.notes;
       save();
       alert('Backup importado!');
       location.hash = '#/';
@@ -571,7 +605,7 @@ const ACTIONS = {
   },
   'export'() {
     const name = `mecanotas-backup-${today()}.json`;
-    const blob = new Blob([JSON.stringify(DB, null, 1)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ app: 'mecanotas', notes: DB.notes }, null, 1)], { type: 'application/json' });
     const file = new File([blob], name, { type: 'application/json' });
     if (navigator.canShare?.({ files: [file] })) {
       navigator.share({ files: [file], title: name }).catch(() => {});
@@ -583,19 +617,16 @@ const ACTIONS = {
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   },
-  'restore-missing'() {
-    const missing = DEFAULT_DATA.sections.filter(d => !DB.sections.some(s => s.id === d.id));
-    if (!missing.length) { alert('Nenhuma seção padrão está faltando.'); return; }
-    DB.sections.push(...withIds({ sections: clone(missing) }).sections);
-    save();
-    alert(`Restauradas: ${missing.map(s => s.title).join(', ')}`);
-    render();
-  },
-  'reset'() {
-    if (!confirm('Todas as seções e tabelas voltarão ao padrão original. Suas edições nas tabelas serão perdidas (as anotações de serviço ficam). Continuar?')) return;
-    DB.sections = withIds(clone(DEFAULT_DATA)).sections;
-    save();
-    location.hash = '#/';
+  async 'publish'({ el }) {
+    if (!confirm('Publicar as alterações para todos os celulares?')) return;
+    el.disabled = true;
+    el.textContent = '⏳ Publicando...';
+    await saving;
+    const r = await fetch('/api/publicar', { method: 'POST' }).then(x => x.json()).catch(e => ({ ok: false, msg: e.message }));
+    alert(r.ok
+      ? '✅ Publicado! Em 1 a 2 minutos a atualização estará no site. Os celulares recebem ao abrir o app (às vezes é preciso abrir duas vezes).'
+      : '❌ Erro ao publicar:\n' + r.msg);
+    refreshAdminBar();
   },
 };
 
@@ -622,9 +653,10 @@ document.addEventListener('input', e => {
 });
 
 window.addEventListener('hashchange', render);
-render();
+detectAdmin().then(render);
 
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+// No PC (localhost) não usa cache offline, para o editor sempre mostrar o conteúdo atual
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js');
 }
 navigator.storage?.persist?.();
