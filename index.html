@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1b1f24">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MecaNotas">
+  <title>MecaNotas: Mecânica Industrial</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button id="btn-back" class="icon-btn" aria-label="Voltar" hidden>‹</button>
+    <h1 id="title">MecaNotas</h1>
+    <button id="btn-edit" class="icon-btn" data-action="toggle-edit" aria-label="Modo edição" hidden>✏️</button>
+    <a href="#/config" class="icon-btn" aria-label="Backup e configurações">⚙️</a>
+  </header>
+  <main id="app"></main>
+  <div id="modal" class="modal" hidden></div>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
