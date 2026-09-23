@@ -22,6 +22,8 @@ App para Android e iPhone com tabelas, calculadoras e anotações de serviço. F
    - na tela inicial, **＋ Nova seção** (uma aba nova, ex.: Acoplamentos);
    - ⬆ ⬇ mudam a ordem e 🗑 exclui;
    - nos textos, `**palavra**` fica em **negrito**.
+   - em **✏️ Nome, ícone e foto** (dentro da seção), escolha uma **foto** para o ícone;
+   - em ⚙️ → **🎨 Aparência do app**: nome do app, paleta de cores e mecânico ajudante.
 4. Cada alteração é salva no PC na hora. Quando terminar, clique em **🚀 Publicar**.
 5. Em 1 a 2 minutos o site é atualizado. Os celulares recebem a novidade quando abrirem o app (às vezes é preciso abrir duas vezes).
 6. Feche a janela preta para encerrar o editor.

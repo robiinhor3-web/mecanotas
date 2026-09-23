@@ -18,7 +18,17 @@ const slug = s => norm(s).replace(/[^a-z0-9]+/g, '-');
 // Cada aparelho guarda apenas as próprias anotações de serviço.
 // O modo edição só existe no PC do administrador (EDITAR-APP.bat → admin-server.js).
 let ADMIN = false;
-let DB = withIds({ sections: clone(DEFAULT_DATA.sections), notes: loadNotes() });
+const DEFAULT_SETTINGS = { appName: 'MecaNotas', theme: 'industrial', accent: '', mascot: true };
+let DB = withIds({
+  settings: { ...DEFAULT_SETTINGS, ...DEFAULT_DATA.settings },
+  sections: clone(DEFAULT_DATA.sections),
+  notes: loadNotes(),
+});
+// preferências de cada aparelho (WhatsApp padrão, nome do executante, último backup)
+const PREFS_KEY = 'mecanotas-prefs';
+let PREFS = {};
+try { PREFS = JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch { /* sem prefs */ }
+const savePrefs = () => localStorage.setItem(PREFS_KEY, JSON.stringify(PREFS));
 let editMode = false;
 let pageEditable = false;
 let lastRoute = null;
@@ -49,12 +59,43 @@ function save() {
   if (ADMIN) saveContent();
 }
 
+// ---------- Aparência ----------
+
+const THEMES = {
+  industrial: { name: 'Industrial (amarelo)', accent: '#f5b301', bg: '#121417', panel: '#1d2127', panel2: '#262b33', line: '#333a44', text: '#e8eaed', muted: '#9aa3ad', topbg: '#1b1f24', strong: '#ffffff' },
+  aco: { name: 'Azul aço', accent: '#3b9eff', bg: '#0e1520', panel: '#152032', panel2: '#1d2b42', line: '#2a3b57', text: '#e6edf6', muted: '#93a4bb', topbg: '#101a2a', strong: '#ffffff' },
+  seguranca: { name: 'Verde segurança', accent: '#2ecc71', bg: '#0f1612', panel: '#17221b', panel2: '#1f2e24', line: '#2c4033', text: '#e5efe8', muted: '#94a89a', topbg: '#111a14', strong: '#ffffff' },
+  laranja: { name: 'Laranja oficina', accent: '#ff7a1a', bg: '#151210', panel: '#211b17', panel2: '#2b231d', line: '#3d3129', text: '#f0e9e4', muted: '#ab9d92', topbg: '#1a1512', strong: '#ffffff' },
+  vermelho: { name: 'Vermelho máquina', accent: '#ff4d4d', bg: '#141111', panel: '#1f1818', panel2: '#2a2020', line: '#3b2c2c', text: '#f1e6e6', muted: '#ab9797', topbg: '#191313', strong: '#ffffff' },
+  claro: { name: 'Claro (dia)', accent: '#d48c00', bg: '#f1f3f5', panel: '#ffffff', panel2: '#eceff2', line: '#d5dae0', text: '#1f2328', muted: '#5d6874', topbg: '#ffffff', strong: '#000000' },
+};
+
+function themeColors(settings = DB.settings) {
+  const t = { ...(THEMES[settings.theme] || THEMES.industrial) };
+  if (settings.accent) t.accent = settings.accent;
+  return t;
+}
+
+function applyTheme() {
+  const t = themeColors();
+  const root = document.documentElement.style;
+  ['accent', 'bg', 'panel', 'panel2', 'line', 'text', 'muted', 'topbg', 'strong'].forEach(k => root.setProperty('--' + k, t[k]));
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', t.topbg);
+  document.title = DB.settings.appName;
+}
+
 // ---------- Administrador (somente no PC) ----------
 
 let saving = Promise.resolve();
 
 function saveContent() {
-  const body = JSON.stringify({ version: DEFAULT_DATA.version || 1, sections: DB.sections });
+  const t = themeColors();
+  const body = JSON.stringify({
+    version: DEFAULT_DATA.version || 1,
+    settings: DB.settings,
+    sections: DB.sections,
+    manifest: { name: DB.settings.appName, theme_color: t.topbg, background_color: t.bg },
+  });
   saving = saving
     .then(() => fetch('/api/salvar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }))
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return refreshAdminBar(); })
@@ -212,7 +253,9 @@ function runCalc(el) {
   const c = CALCS[el.dataset.calc];
   const v = {};
   el.querySelectorAll('[data-k]').forEach(i => { v[i.dataset.k] = num(i.value); });
-  $('.out', el).innerHTML = c.run(v) || '';
+  const out = c.run(v) || '';
+  $('.out', el).innerHTML = out;
+  if (out.includes('⚠️')) Mascote.evento('calc-aviso', { calc: el.dataset.calc, texto: $('.out', el).textContent });
 }
 
 // ---------- Telas ----------
@@ -240,21 +283,28 @@ function render() {
   else if (page === 'notas') a ? renderNote(a) : renderNotes();
   else if (page === 'busca') renderSearch(decodeURIComponent(a || ''));
   else if (page === 'config') renderSettings();
+  else if (page === 'aparencia' && ADMIN) renderAppearance();
   else renderHome();
+  Mascote.evento('rota', { page, id: a });
   if (route !== lastRoute && !b) window.scrollTo(0, 0);
   lastRoute = route;
 }
 
+const sectionIcon = (s, cls = 'ico') => s.image
+  ? `<img class="${cls} ico-img" src="${esc(s.image)}" alt="">`
+  : `<span class="${cls}">${esc(s.icon)}</span>`;
+
 function renderHome() {
-  setHeader('MecaNotas', { editable: true });
+  setHeader(DB.settings.appName, { editable: true });
+  const abertas = DB.notes.filter(n => n.status !== 'Concluída').length;
   view(`
     <form class="search" id="search-form">
       <input type="search" id="q" placeholder="🔍 Buscar em tudo (ex: 6205, 35x52, cavitação)" enterkeyhint="search">
     </form>
-    <a class="card card-notes" href="#/notas"><span class="ico">📝</span>
-      <div><b>Anotações de serviço</b><small>${DB.notes.length} registro(s)</small></div></a>
+    <a class="card card-notes" href="#/notas"><span class="ico">📋</span>
+      <div><b>Ordens de serviço</b><small>${DB.notes.length} registro(s)${abertas ? ` · <span class="pend">${abertas} em aberto</span>` : ''}</small></div></a>
     <div class="grid">
-      ${DB.sections.map(s => `<a class="card" href="#/s/${s.id}"><span class="ico">${esc(s.icon)}</span><b>${esc(s.title)}</b></a>`).join('')}
+      ${DB.sections.map(s => `<a class="card" href="#/s/${s.id}">${sectionIcon(s)}<b>${esc(s.title)}</b></a>`).join('')}
       ${editMode ? '<button class="card add" data-action="add-section"><span class="ico">＋</span><b>Nova seção</b></button>' : ''}
     </div>`);
   $('#search-form').onsubmit = e => {
@@ -270,7 +320,7 @@ function renderSection(id, scrollTo) {
   setHeader(s.title, { back: '#/', editable: true });
   view(`
     ${editMode ? `<div class="toolbar">
-      <button data-action="edit-section" data-s="${s.id}">✏️ Renomear seção</button>
+      <button data-action="edit-section" data-s="${s.id}">✏️ Nome, ícone e foto</button>
       <button class="danger" data-action="del-section" data-s="${s.id}">🗑 Excluir seção</button></div>` : ''}
     ${s.blocks.map(b => renderBlock(s, b)).join('')}
     ${s.blocks.length ? '' : '<p class="empty">Seção vazia. Toque no ✏️ lá em cima para adicionar tabelas, textos e calculadoras.</p>'}
@@ -316,7 +366,7 @@ function renderSearch(q) {
   const hits = [];
   DB.sections.forEach(s => s.blocks.forEach(b => {
     const link = `#/s/${s.id}/${b.id}`;
-    const where = `${esc(s.icon)} ${esc(s.title)} › ${esc(b.title)}`;
+    const where = `${s.image ? '' : esc(s.icon)} ${esc(s.title)} › ${esc(b.title)}`;
     if (b.type === 'table') {
       b.rows.forEach(r => {
         if (norm(r.join(' ')).includes(nq)) hits.push(`<a class="hit" href="${link}"><small>${where}</small>
@@ -327,10 +377,11 @@ function renderSearch(q) {
     }
   }));
   DB.notes.forEach(n => {
-    if (norm(noteText(n)).includes(nq)) hits.push(`<a class="hit" href="#/notas/${n.id}"><small>📝 Anotação · ${fmtDate(n.date)}</small><span><b>${esc(n.equipment)}</b> ${esc(n.tag)}</span></a>`);
+    if (norm(noteText(n)).includes(nq)) hits.push(`<a class="hit" href="#/notas/${n.id}"><small>📋 ${n.os ? 'OS ' + esc(n.os) + ' · ' : ''}${fmtDate(n.date)}</small><span><b>${esc(n.equipment)}</b> ${esc(n.tag)}</span></a>`);
   });
   view(`<form class="search" id="search-form"><input type="search" id="q" value="${esc(q)}" enterkeyhint="search"></form>
     <p class="muted">${hits.length} resultado(s) para "${esc(q)}"</p>${hits.join('')}`);
+  if (!hits.length) Mascote.evento('busca-vazia', q);
   $('#search-form').onsubmit = e => {
     e.preventDefault();
     const nq2 = $('#q').value.trim();
@@ -338,45 +389,79 @@ function renderSearch(q) {
   };
 }
 
-// ---------- Anotações de serviço ----------
+// ---------- Ordens de serviço ----------
 
 const NOTE_FIELDS = [
+  { key: 'os', label: 'Nº da nota / OS' },
   { key: 'date', label: 'Data', type: 'date' },
+  { key: 'executor', label: 'Executante(s)' },
   { key: 'equipment', label: 'Equipamento' },
   { key: 'tag', label: 'TAG / Local' },
   { key: 'kind', label: 'Tipo de serviço', type: 'select', options: ['Corretiva', 'Preventiva', 'Preditiva', 'Inspeção', 'Melhoria', 'Outro'] },
   { key: 'status', label: 'Status', type: 'select', options: ['Aberta', 'Em andamento', 'Concluída'] },
   { key: 'problem', label: 'Problema / solicitação', type: 'textarea' },
-  { key: 'done', label: 'Serviço executado', type: 'textarea' },
+  { key: 'done', label: 'O que foi feito no serviço', type: 'textarea', rows: 5 },
   { key: 'parts', label: 'Peças / materiais usados', type: 'textarea', rows: 3 },
+  { key: 'hours', label: 'Horas trabalhadas', inputmode: 'decimal' },
   { key: 'obs', label: 'Observações / medições', type: 'textarea', rows: 3 },
 ];
 
 const noteText = n => NOTE_FIELDS.map(f => `${f.label}: ${f.key === 'date' ? fmtDate(n.date) : (n[f.key] || '-')}`).join('\n');
 
+// Relatório no formato do WhatsApp (*negrito*), sem os campos vazios
+function whatsReport(n) {
+  const line = (label, v) => (v ? `*${label}:* ${v}` : null);
+  const block = (label, v) => (v ? `\n*${label}:*\n${v}` : null);
+  return [
+    '🔧 *RELATÓRIO DE SERVIÇO*',
+    line('OS / Nota', n.os),
+    line('Data', fmtDate(n.date)),
+    line('Executante', n.executor),
+    line('Equipamento', [n.equipment, n.tag && `(${n.tag})`].filter(Boolean).join(' ')),
+    line('Tipo', [n.kind, n.status].filter(Boolean).join(' · ')),
+    block('Problema', n.problem),
+    block('Serviço executado', n.done),
+    block('Peças / materiais', n.parts),
+    n.hours ? `\n*Horas trabalhadas:* ${n.hours} h` : null,
+    block('Observações', n.obs),
+  ].filter(Boolean).join('\n');
+}
+
+function sendWhats(text) {
+  const num = (PREFS.whats || '').replace(/\D/g, '');
+  const full = num && num.length <= 11 ? '55' + num : num;
+  window.open(`https://wa.me/${full}?text=${encodeURIComponent(text)}`, '_blank');
+  Mascote.evento('whatsapp');
+}
+
 function renderNotes() {
-  setHeader('Anotações de serviço', { back: '#/' });
-  const notes = [...DB.notes].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  setHeader('Ordens de serviço', { back: '#/' });
+  const notes = [...DB.notes].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.os || '').localeCompare(a.os || ''));
+  const hoje = DB.notes.filter(n => n.date === today()).length;
   view(`
-    <div class="toolbar"><button class="primary" data-action="new-note">＋ Nova anotação</button></div>
-    ${notes.length > 3 ? '<input type="search" class="filter-notes" placeholder="Filtrar por equipamento, TAG, peça...">' : ''}
+    <div class="toolbar">
+      <button class="primary" data-action="new-note">＋ Nova OS</button>
+      ${hoje ? `<button class="whats" data-action="whats-day">📲 Relatório de hoje (${hoje})</button>` : ''}
+    </div>
+    ${notes.length > 3 ? '<input type="search" class="filter-notes" placeholder="Filtrar por OS, equipamento, TAG, peça...">' : ''}
     ${notes.map(n => `<a class="note-card" href="#/notas/${n.id}" data-search="${esc(norm(noteText(n)))}">
-      <div class="note-top"><span>${fmtDate(n.date)} · ${esc(n.kind)}</span><span class="badge st-${slug(n.status)}">${esc(n.status)}</span></div>
+      <div class="note-top"><span>${n.os ? `<b>OS ${esc(n.os)}</b> · ` : ''}${fmtDate(n.date)} · ${esc(n.kind)}</span><span class="badge st-${slug(n.status)}">${esc(n.status)}</span></div>
       <b>${esc(n.equipment || 'Sem equipamento')}</b>${n.tag ? ` <small>${esc(n.tag)}</small>` : ''}
-      <p>${esc((n.problem || n.done || '').slice(0, 120))}</p></a>`).join('')}
-    ${notes.length ? '' : '<p class="empty">Nenhuma anotação ainda.</p>'}`);
+      <p>${esc((n.done || n.problem || '').slice(0, 120))}</p></a>`).join('')}
+    ${notes.length ? '' : '<p class="empty">Nenhuma ordem de serviço ainda. Toque em ＋ Nova OS.</p>'}`);
 }
 
 function renderNote(id) {
   const n = DB.notes.find(x => x.id === id);
   if (!n) { location.hash = '#/notas'; return; }
-  setHeader(n.equipment || 'Anotação', { back: '#/notas' });
-  view(`<section class="block note-view">
+  setHeader(n.os ? 'OS ' + n.os : (n.equipment || 'Ordem de serviço'), { back: '#/notas' });
+  view(`<button class="whats big" data-action="whats-note" data-id="${n.id}">📲 Enviar relatório no WhatsApp</button>
+    <section class="block note-view">
       ${NOTE_FIELDS.map(f => `<div class="nf"><span>${esc(f.label)}</span><div>${f.key === 'date' ? fmtDate(n.date) : richText(n[f.key] || '—')}</div></div>`).join('')}
     </section>
     <div class="toolbar">
       <button class="primary" data-action="edit-note" data-id="${n.id}">✏️ Editar</button>
-      <button data-action="share-note" data-id="${n.id}">📤 Compartilhar</button>
+      <button data-action="share-note" data-id="${n.id}">📤 Outros apps</button>
       <button data-action="dup-note" data-id="${n.id}">📄 Duplicar</button>
       <button class="danger" data-action="del-note" data-id="${n.id}">🗑 Excluir</button>
     </div>`);
@@ -384,14 +469,16 @@ function renderNote(id) {
 
 function noteModal(n) {
   const isNew = !n;
-  n ||= { date: today(), kind: 'Corretiva', status: 'Aberta' };
+  n ||= { date: today(), kind: 'Corretiva', status: 'Aberta', executor: PREFS.executor || '' };
   openModal({
-    title: isNew ? 'Nova anotação' : 'Editar anotação',
+    title: isNew ? 'Nova ordem de serviço' : 'Editar ordem de serviço',
     fields: NOTE_FIELDS.map(f => ({ ...f, value: n[f.key] })),
     onSave: v => {
       Object.assign(n, v);
       if (isNew) { n.id = uid(); DB.notes.push(n); }
+      if (v.executor) { PREFS.executor = v.executor; savePrefs(); }
       save();
+      Mascote.evento('nota-salva', n);
       if (isNew) location.hash = '#/notas/' + n.id; else render();
     },
   });
@@ -400,21 +487,89 @@ function noteModal(n) {
 // ---------- Backup ----------
 
 function renderSettings() {
-  setHeader('Backup e configurações', { back: '#/' });
+  setHeader('Configurações', { back: '#/' });
   view(`
-    <section class="block"><h3>💾 Backup das anotações</h3>
-      <p>Suas ${DB.notes.length} anotações de serviço ficam salvas <b>somente neste aparelho</b>. Exporte um backup de vez em quando
-      e guarde no Google Drive, e-mail ou WhatsApp. O mesmo arquivo serve para passar as anotações para outro celular.</p>
+    ${ADMIN ? `<a class="card card-notes admin-card" href="#/aparencia"><span class="ico">🎨</span>
+      <div><b>Aparência do app</b><small>Nome do app, cores e mecânico ajudante (só no seu PC)</small></div></a>` : ''}
+    <section class="block"><h3>📲 WhatsApp dos relatórios</h3>
+      <form id="prefs-form">
+        <label class="lbl">Número que recebe os relatórios (opcional)
+          <input name="whats" type="tel" inputmode="tel" placeholder="(11) 98765-4321" value="${esc(PREFS.whats || '')}"></label>
+        <p class="hint">Com o número preenchido, o relatório já abre na conversa dessa pessoa (supervisor, PCM...).
+        Em branco, o WhatsApp pergunta para quem enviar.</p>
+        <label class="lbl">Seu nome (executante)
+          <input name="executor" placeholder="Ex.: João Silva" value="${esc(PREFS.executor || '')}"></label>
+        <div class="toolbar"><button class="primary">Salvar</button></div>
+      </form>
+    </section>
+    <section class="block"><h3>🔧 Mecânico ajudante</h3>
+      <p class="hint">O bonequinho no canto da tela dá dicas de vez em quando.</p>
+      <div class="toolbar"><button data-action="mascot-toggle">${PREFS.mascotOff ? '👷 Mostrar o mecânico' : '💤 Esconder o mecânico'}</button></div>
+    </section>
+    <section class="block"><h3>💾 Backup das ordens de serviço</h3>
+      <p>Suas ${DB.notes.length} ordens de serviço ficam salvas <b>somente neste aparelho</b>. Exporte um backup de vez em quando
+      e guarde no Google Drive, e-mail ou WhatsApp. O mesmo arquivo serve para passar tudo para outro celular.</p>
       <div class="toolbar">
         <button class="primary" data-action="export">⬇ Exportar backup</button>
         <label class="btn">⬆ Importar backup<input type="file" accept=".json,application/json" id="import-file" hidden></label>
       </div>
     </section>
     <section class="block"><h3>ℹ️ Sobre</h3>
-      <p>MecaNotas: anotações e tabelas de mecânica industrial. Funciona sem internet.<br>
+      <p>${esc(DB.settings.appName)}: tabelas, calculadoras e ordens de serviço de mecânica industrial. Funciona sem internet.<br>
       Os valores das tabelas são de <b>referência</b>. Confira sempre o catálogo e o manual do fabricante.</p>
     </section>`);
   $('#import-file').onchange = importFile;
+  $('#prefs-form').onsubmit = e => {
+    e.preventDefault();
+    const f = e.target.elements;
+    PREFS.whats = f.whats.value.trim();
+    PREFS.executor = f.executor.value.trim();
+    savePrefs();
+    alert('Salvo!');
+  };
+}
+
+function renderAppearance() {
+  setHeader('Aparência do app', { back: '#/config' });
+  const s = DB.settings;
+  view(`
+    <section class="block"><h3>🏷️ Nome do app</h3>
+      <input id="ap-name" maxlength="30" value="${esc(s.appName)}">
+      <p class="hint">Aparece no topo e embaixo do ícone no celular. Nomes com até 12 letras cabem melhor na tela inicial.</p>
+    </section>
+    <section class="block"><h3>🎨 Paleta de cores</h3>
+      <div class="themes">
+        ${Object.entries(THEMES).map(([k, t]) => `<button class="theme-opt ${s.theme === k ? 'sel' : ''}" data-action="pick-theme" data-theme="${k}"
+          style="background:${t.bg};color:${t.text};border-color:${s.theme === k ? t.accent : t.line}">
+          <span class="sw" style="background:${t.accent}"></span><span class="sw" style="background:${t.panel2}"></span>${esc(t.name)}</button>`).join('')}
+      </div>
+      <label class="lbl">Cor de destaque personalizada
+        <span class="row"><input id="ap-accent" type="color" value="${s.accent || themeColors().accent}">
+        <button data-action="reset-accent">Usar a da paleta</button></span></label>
+    </section>
+    <section class="block"><h3>👷 Mecânico ajudante</h3>
+      <label class="check"><input id="ap-mascot" type="checkbox" ${s.mascot ? 'checked' : ''}> Mostrar o mecânico ajudante para todos</label>
+    </section>
+    <div class="toolbar"><button class="primary" data-action="save-appearance">💾 Salvar aparência</button></div>
+    <p class="hint">Depois de salvar, clique em 🚀 Publicar na barra roxa para mandar para os celulares.</p>`);
+  $('#ap-accent').oninput = e => { DB.settings.accent = e.target.value; applyTheme(); };
+}
+
+// Recorta a foto em quadrado (centro) e reduz para 256 px
+function squareImage(file, size = 256) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.width, img.height);
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = size;
+      cv.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+      URL.revokeObjectURL(img.src);
+      resolve(cv.toDataURL('image/webp', 0.85));
+    };
+    img.onerror = () => reject(new Error('Não consegui abrir essa imagem.'));
+    img.src = URL.createObjectURL(file);
+  });
 }
 
 function importFile(e) {
@@ -454,7 +609,7 @@ function fieldHtml(f, i) {
     const [val, lab] = Array.isArray(o) ? o : [o, o];
     return `<option value="${esc(val)}" ${val === f.value ? 'selected' : ''}>${esc(lab)}</option>`;
   }).join('')}</select>`;
-  else input = `<input name="${name}" type="${f.type || 'text'}" value="${v}" autocomplete="off">`;
+  else input = `<input name="${name}" type="${f.type || 'text'}" value="${v}" autocomplete="off"${f.inputmode ? ` inputmode="${f.inputmode}"` : ''}>`;
   return `<label>${esc(f.label)}${f.hint ? ` <small>${esc(f.hint)}</small>` : ''}${input}</label>`;
 }
 
@@ -530,29 +685,58 @@ function editRowModal(block, ri) {
   });
 }
 
+function sectionModal(sec) {
+  let image = sec?.image || '';
+  openModal({
+    title: sec ? 'Editar seção' : 'Nova seção',
+    body: `<div class="img-pick">
+        <div id="img-prev">${image ? `<img src="${esc(image)}" alt="">` : `<span>${esc(sec?.icon || '🔧')}</span>`}</div>
+        <div>
+          <label class="btn">📷 Escolher foto<input type="file" accept="image/*" id="img-file" hidden></label>
+          <button type="button" id="img-del" ${image ? '' : 'hidden'}>Remover foto</button>
+          <p class="hint">A foto é cortada em quadrado pelo centro. Sem foto, usa o emoji abaixo.</p>
+        </div>
+      </div>`,
+    fields: [
+      { key: 'title', label: 'Nome (ex: Acoplamentos, Engrenagens, Lubrificação)', value: sec?.title },
+      { key: 'icon', label: 'Ícone (emoji), usado quando não há foto', value: sec?.icon || '🔧' },
+    ],
+    onSave: v => {
+      if (!v.title.trim()) { alert('Informe o nome.'); return false; }
+      const s = sec || { id: uid(), blocks: [] };
+      Object.assign(s, { title: v.title.trim(), icon: v.icon || '🔧', image });
+      if (!image) delete s.image;
+      if (!sec) DB.sections.push(s);
+      save();
+      if (sec) render(); else location.hash = '#/s/' + s.id;
+    },
+  });
+  $('#img-file').onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const data = await squareImage(file);
+      const r = await fetch('/api/imagem', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: sec?.id || uid(), data }) }).then(x => x.json());
+      if (!r.ok) throw new Error(r.msg);
+      image = r.path;
+      $('#img-prev').innerHTML = `<img src="${esc(image)}" alt="">`;
+      $('#img-del').hidden = false;
+    } catch (err) { alert('Erro na foto: ' + err.message); }
+  };
+  $('#img-del').onclick = () => {
+    image = '';
+    $('#img-prev').innerHTML = `<span>${esc(sec?.icon || '🔧')}</span>`;
+    $('#img-del').hidden = true;
+  };
+}
+
 // ---------- Ações (cliques) ----------
 
 const ACTIONS = {
   'toggle-edit'() { editMode = !editMode; render(); },
-  'add-section'() {
-    openModal({
-      title: 'Nova seção',
-      fields: [{ key: 'title', label: 'Nome (ex: Acoplamentos, Engrenagens, Lubrificação)' }, { key: 'icon', label: 'Ícone (emoji)', value: '🔧' }],
-      onSave: v => {
-        if (!v.title.trim()) return false;
-        const s = { id: uid(), title: v.title.trim(), icon: v.icon || '🔧', blocks: [] };
-        DB.sections.push(s); save();
-        location.hash = '#/s/' + s.id;
-      },
-    });
-  },
-  'edit-section'({ sec }) {
-    openModal({
-      title: 'Editar seção',
-      fields: [{ key: 'title', label: 'Nome', value: sec.title }, { key: 'icon', label: 'Ícone (emoji)', value: sec.icon }],
-      onSave: v => { sec.title = v.title.trim() || sec.title; sec.icon = v.icon; save(); render(); },
-    });
-  },
+  'add-section'() { sectionModal(null); },
+  'edit-section'({ sec }) { sectionModal(sec); },
   'del-section'({ sec }) {
     if (!confirm(`Excluir a seção "${sec.title}" e todo o conteúdo dela?`)) return;
     DB.sections = DB.sections.filter(s => s !== sec); save();
@@ -601,12 +785,44 @@ const ACTIONS = {
   },
   'share-note'({ el }) {
     const n = DB.notes.find(x => x.id === el.dataset.id);
-    shareText(`Serviço: ${n.equipment}`, `🔧 *Anotação de serviço*\n${noteText(n)}`);
+    shareText(`Serviço: ${n.equipment}`, whatsReport(n));
+  },
+  'whats-note'({ el }) { sendWhats(whatsReport(DB.notes.find(x => x.id === el.dataset.id))); },
+  'whats-day'() {
+    const list = DB.notes.filter(n => n.date === today());
+    const head = `📋 *RELATÓRIO DO DIA ${fmtDate(today())}*${PREFS.executor ? `\n*Executante:* ${PREFS.executor}` : ''}\n*Serviços:* ${list.length}`;
+    sendWhats([head, ...list.map((n, i) => `━━━━━━━━━━\n*${i + 1}.* ` + whatsReport(n).split('\n').slice(1).join('\n'))].join('\n\n'));
+  },
+  'mascot-toggle'() {
+    PREFS.mascotOff = !PREFS.mascotOff;
+    savePrefs();
+    Mascote.iniciar(DB.settings.mascot && !PREFS.mascotOff);
+    render();
+  },
+  'pick-theme'({ el }) {
+    DB.settings.theme = el.dataset.theme;
+    DB.settings.accent = '';
+    applyTheme();
+    render();
+  },
+  'reset-accent'() { DB.settings.accent = ''; applyTheme(); render(); },
+  'save-appearance'() {
+    const name = $('#ap-name').value.trim();
+    if (!name) { alert('Informe o nome do app.'); return; }
+    DB.settings.appName = name;
+    DB.settings.mascot = $('#ap-mascot').checked;
+    applyTheme();
+    Mascote.iniciar(DB.settings.mascot && !PREFS.mascotOff);
+    save();
+    alert('Aparência salva! Clique em 🚀 Publicar para mandar para os celulares.');
+    location.hash = '#/';
   },
   'export'() {
     const name = `mecanotas-backup-${today()}.json`;
     const blob = new Blob([JSON.stringify({ app: 'mecanotas', notes: DB.notes }, null, 1)], { type: 'application/json' });
     const file = new File([blob], name, { type: 'application/json' });
+    PREFS.lastBackup = Date.now();
+    savePrefs();
     if (navigator.canShare?.({ files: [file] })) {
       navigator.share({ files: [file], title: name }).catch(() => {});
       return;
@@ -653,7 +869,16 @@ document.addEventListener('input', e => {
 });
 
 window.addEventListener('hashchange', render);
-detectAdmin().then(render);
+applyTheme();
+detectAdmin().then(() => {
+  Mascote.iniciar(DB.settings.mascot && !PREFS.mascotOff);
+  render();
+  Mascote.evento('abertura', {
+    abertas: DB.notes.filter(n => n.status !== 'Concluída').length,
+    notas: DB.notes.length,
+    diasSemBackup: PREFS.lastBackup ? (Date.now() - PREFS.lastBackup) / 864e5 : Infinity,
+  });
+});
 
 // No PC (localhost) não usa cache offline, para o editor sempre mostrar o conteúdo atual
 if ('serviceWorker' in navigator && location.protocol === 'https:') {

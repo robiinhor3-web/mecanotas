@@ -14,6 +14,7 @@ const DATA_FILE = path.join(ROOT, 'data.js');
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.md': 'text/plain; charset=utf-8',
+  '.webp': 'image/webp', '.jpg': 'image/jpeg',
 };
 
 const HEADER = `// Conteúdo do app (seções, tabelas, textos e calculadoras).
@@ -31,6 +32,25 @@ function formatData(data) {
 
 // Usa o Git do PATH ou, se não achar, o local padrão da instalação no Windows
 const GIT = ['C:\\Program Files\\Git\\cmd\\git.exe', 'C:\\Program Files (x86)\\Git\\cmd\\git.exe'].find(p => fs.existsSync(p)) || 'git';
+
+const IMG_DIR = path.join(ROOT, 'icons', 'secoes');
+
+// Nome e cores do app instalado (tela inicial do celular) vêm do manifest.json e do index.html
+function updateAppIdentity({ name, theme_color, background_color }) {
+  const mPath = path.join(ROOT, 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+  Object.assign(manifest, { name, short_name: name, theme_color, background_color });
+  fs.writeFileSync(mPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+
+  const iPath = path.join(ROOT, 'index.html');
+  const attr = s => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const html = fs.readFileSync(iPath, 'utf8')
+    .replace(/<title>[^<]*<\/title>/, `<title>${attr(name)}</title>`)
+    .replace(/(name="apple-mobile-web-app-title" content=")[^"]*/, `$1${attr(name)}`)
+    .replace(/(name="theme-color" content=")[^"]*/, `$1${attr(theme_color)}`)
+    .replace(/(<h1 id="title">)[^<]*/, `$1${attr(name)}`);
+  fs.writeFileSync(iPath, html, 'utf8');
+}
 
 function git(args) {
   return new Promise(resolve => {
@@ -61,9 +81,20 @@ async function api(req, res, url) {
   if (url === '/api/salvar' && req.method === 'POST') {
     const data = JSON.parse(await readBody(req));
     if (!Array.isArray(data.sections)) return send(res, 400, { ok: false, msg: 'formato inválido' });
-    fs.writeFileSync(DATA_FILE, formatData({ version: data.version || 1, sections: data.sections }), 'utf8');
+    fs.writeFileSync(DATA_FILE, formatData({ version: data.version || 1, settings: data.settings, sections: data.sections }), 'utf8');
+    if (data.manifest) updateAppIdentity(data.manifest);
     console.log(new Date().toLocaleTimeString('pt-BR'), 'alteração salva');
     return send(res, 200, { ok: true });
+  }
+  if (url === '/api/imagem' && req.method === 'POST') {
+    const { nome, data } = JSON.parse(await readBody(req));
+    const m = /^data:image\/(webp|png|jpeg);base64,(.+)$/.exec(data || '');
+    if (!m || !/^[\w-]{1,60}$/.test(nome || '')) return send(res, 400, { ok: false, msg: 'imagem inválida' });
+    fs.mkdirSync(IMG_DIR, { recursive: true });
+    const file = `${nome}.${m[1] === 'jpeg' ? 'jpg' : m[1]}`;
+    fs.writeFileSync(path.join(IMG_DIR, file), Buffer.from(m[2], 'base64'));
+    console.log(new Date().toLocaleTimeString('pt-BR'), 'foto salva:', file);
+    return send(res, 200, { ok: true, path: `icons/secoes/${file}?v=${Date.now().toString(36)}` });
   }
   if (url === '/api/publicar' && req.method === 'POST') {
     await git(['add', '-A']);

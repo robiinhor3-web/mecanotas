@@ -1,7 +1,7 @@
 // Guarda o app no aparelho para funcionar sem internet.
 // Com internet, busca sempre a versão mais nova; sem internet, usa a cópia salva.
-const CACHE = 'mecanotas-v3';
-const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'data.js', 'manifest.json',
+const CACHE = 'mecanotas-v4';
+const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'data.js', 'mascote.js', 'manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
