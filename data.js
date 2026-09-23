@@ -4,6 +4,12 @@
 
 const DEFAULT_DATA = {
   "version": 1,
+  "settings": {
+    "appName": "MecaNotas",
+    "theme": "industrial",
+    "accent": "",
+    "mascot": true
+  },
   "sections": [
     {
       "id": "rolamentos",
@@ -136,7 +142,8 @@ const DEFAULT_DATA = {
           "text": "• Aquecer por **indução** ou banho de óleo, no máximo **110–120 °C**. Nunca use maçarico direto.\n• Aplique força **somente no anel que tem interferência**. Nunca bata pelas esferas.\n• Eixo girando → anel interno com interferência, anel externo deslizante na caixa.\n• Graxa: preencher de **30 a 50%** do espaço livre da caixa (rotação alta = menos graxa).\n• Temperatura normal da caixa em operação: até cerca de 70–80 °C.\n• Nunca gire um rolamento seco com ar comprimido.\n• Guarde o rolamento na embalagem até a hora de montar.",
           "id": "rolamentos-8"
         }
-      ]
+      ],
+      "image": "icons/secoes/rolamentos.webp?v=muelerzw"
     },
     {
       "id": "retentores",
@@ -364,7 +371,8 @@ const DEFAULT_DATA = {
           ],
           "id": "selos-q"
         }
-      ]
+      ],
+      "image": "icons/secoes/selos.webp?v=mueldm8o"
     },
     {
       "id": "bombas",
