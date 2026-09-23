@@ -271,7 +271,7 @@ function setHeader(title, { back = null, editable = false } = {}) {
 
 function view(html) {
   const banner = editMode && pageEditable
-    ? '<div class="edit-banner">✏️ Modo edição: toque numa linha para alterar. Toque no ✏️ de cima para sair.</div>' : '';
+    ? '<div class="edit-banner">✏️ Modo edição: toque no que quiser alterar (ícones e fotos, linhas, textos). Toque no ✏️ de cima para sair.</div>' : '';
   $('#app').innerHTML = banner + html;
 }
 
@@ -304,7 +304,9 @@ function renderHome() {
     <a class="card card-notes" href="#/notas"><span class="ico">📋</span>
       <div><b>Ordens de serviço</b><small>${DB.notes.length} registro(s)${abertas ? ` · <span class="pend">${abertas} em aberto</span>` : ''}</small></div></a>
     <div class="grid">
-      ${DB.sections.map(s => `<a class="card" href="#/s/${s.id}">${sectionIcon(s)}<b>${esc(s.title)}</b></a>`).join('')}
+      ${DB.sections.map(s => editMode
+        ? `<button class="card editing" data-action="edit-section" data-s="${s.id}">${sectionIcon(s)}<b>${esc(s.title)}</b><span class="cam">📷 trocar foto</span></button>`
+        : `<a class="card" href="#/s/${s.id}">${sectionIcon(s)}<b>${esc(s.title)}</b></a>`).join('')}
       ${editMode ? '<button class="card add" data-action="add-section"><span class="ico">＋</span><b>Nova seção</b></button>' : ''}
     </div>`);
   $('#search-form').onsubmit = e => {
@@ -533,6 +535,16 @@ function renderAppearance() {
   setHeader('Aparência do app', { back: '#/config' });
   const s = DB.settings;
   view(`
+    <section class="block"><h3>📱 Ícone do app (tela inicial do celular)</h3>
+      <div class="img-pick">
+        <div id="app-icon-prev"><img src="icons/icon-192.png?v=${Date.now()}" alt=""></div>
+        <div>
+          <label class="btn">📷 Trocar ícone do app<input type="file" accept="image/*" id="app-icon-file" hidden></label>
+          <p class="hint">Use uma imagem quadrada. No Android o ícone novo aparece sozinho em alguns dias.
+          No iPhone, é preciso remover e adicionar o app de novo à tela de início.</p>
+        </div>
+      </div>
+    </section>
     <section class="block"><h3>🏷️ Nome do app</h3>
       <input id="ap-name" maxlength="30" value="${esc(s.appName)}">
       <p class="hint">Aparece no topo e embaixo do ícone no celular. Nomes com até 12 letras cabem melhor na tela inicial.</p>
@@ -553,10 +565,23 @@ function renderAppearance() {
     <div class="toolbar"><button class="primary" data-action="save-appearance">💾 Salvar aparência</button></div>
     <p class="hint">Depois de salvar, clique em 🚀 Publicar na barra roxa para mandar para os celulares.</p>`);
   $('#ap-accent').oninput = e => { DB.settings.accent = e.target.value; applyTheme(); };
+  $('#app-icon-file').onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const [i512, i192, i180] = await Promise.all([512, 192, 180].map(n => squareImage(file, n, 'image/png')));
+      const r = await fetch('/api/icone', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ i512, i192, i180 }) }).then(x => x.json());
+      if (!r.ok) throw new Error(r.msg);
+      $('#app-icon-prev').innerHTML = `<img src="icons/icon-192.png?v=${Date.now()}" alt="">`;
+      refreshAdminBar();
+      alert('Ícone do app trocado! Clique em 🚀 Publicar para mandar para os celulares.');
+    } catch (err) { alert('Erro no ícone: ' + err.message); }
+  };
 }
 
 // Recorta a foto em quadrado (centro) e reduz para 256 px
-function squareImage(file, size = 256) {
+function squareImage(file, size = 256, type = 'image/webp') {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -565,7 +590,7 @@ function squareImage(file, size = 256) {
       cv.width = cv.height = size;
       cv.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
       URL.revokeObjectURL(img.src);
-      resolve(cv.toDataURL('image/webp', 0.85));
+      resolve(cv.toDataURL(type, 0.85));
     };
     img.onerror = () => reject(new Error('Não consegui abrir essa imagem.'));
     img.src = URL.createObjectURL(file);

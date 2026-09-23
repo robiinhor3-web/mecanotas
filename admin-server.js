@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 
-const PORT = 8123;
+const PORT = Number(process.env.PORT) || 8123;
 const ROOT = __dirname;
 const DATA_FILE = path.join(ROOT, 'data.js');
 const TYPES = {
@@ -84,6 +84,19 @@ async function api(req, res, url) {
     fs.writeFileSync(DATA_FILE, formatData({ version: data.version || 1, settings: data.settings, sections: data.sections }), 'utf8');
     if (data.manifest) updateAppIdentity(data.manifest);
     console.log(new Date().toLocaleTimeString('pt-BR'), 'alteração salva');
+    return send(res, 200, { ok: true });
+  }
+  if (url === '/api/icone' && req.method === 'POST') {
+    const body = JSON.parse(await readBody(req));
+    const files = { i512: 'icon-512.png', i192: 'icon-192.png', i180: 'apple-touch-icon.png' };
+    const decoded = {};
+    for (const k of Object.keys(files)) {
+      const m = /^data:image\/png;base64,(.+)$/.exec(body[k] || '');
+      if (!m) return send(res, 400, { ok: false, msg: 'imagem inválida' });
+      decoded[k] = Buffer.from(m[1], 'base64');
+    }
+    for (const k of Object.keys(files)) fs.writeFileSync(path.join(ROOT, 'icons', files[k]), decoded[k]);
+    console.log(new Date().toLocaleTimeString('pt-BR'), 'ícone do app trocado');
     return send(res, 200, { ok: true });
   }
   if (url === '/api/imagem' && req.method === 'POST') {
